@@ -1,13 +1,30 @@
 
 import axios from "axios";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "./context/AuthContext";
+
+const CATEGORIES = [
+    { label: "All News", value: "All", icon: "🌐" },
+    { label: "National", value: "National", icon: "🇮🇳" },
+    { label: "Sports", value: "Sports", icon: "🏏" },
+    { label: "Technology", value: "Technology", icon: "💻" },
+    { label: "Economy", value: "Economy", icon: "📈" },
+    { label: "Science", value: "Science", icon: "🔬" },
+    { label: "Politics", value: "Politics", icon: "🏛️" },
+    { label: "Education", value: "Education", icon: "🎓" },
+    { label: "Environment", value: "Environment", icon: "🌱" },
+];
 
 function Affairs() {
     const [news, setNews] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [isRefreshing, setIsRefreshing] = useState(false);
+    const [refreshFeedback, setRefreshFeedback] = useState("");
     const [error, setError] = useState("");
+    const [selectedDay, setSelectedDay] = useState("today");
+    const [selectedCategory, setSelectedCategory] = useState("All");
+
     const { bookmarkedIds, toggleBookmark, isAuthenticated } = useAuth();
     const navigate = useNavigate();
 
@@ -16,61 +33,207 @@ function Affairs() {
             navigate("/login");
             return;
         }
+
         await toggleBookmark(affairId);
     };
 
-    useEffect(() => {
-        axios
-            .get("http://127.0.0.1:8000/latest-affairs")
-            .then((response) => {
-                console.log("DailyIQ API response:", response.data);
+    const fetchNews = useCallback(
+        async (dayToFetch = selectedDay, categoryToFetch = selectedCategory) => {
+            setLoading(true);
+            setError("");
 
-                if (Array.isArray(response.data)) {
-                    setNews(response.data);
-                } else {
-                    setError("The API returned an unexpected response.");
+            try {
+                const categoryParam =
+                    categoryToFetch && categoryToFetch !== "All"
+                        ? `&category=${encodeURIComponent(categoryToFetch)}`
+                        : "";
+
+                const response = await axios.get(
+                    `http://127.0.0.1:8000/latest-affairs?day=${dayToFetch}${categoryParam}`
+                );
+
+                if (!Array.isArray(response.data)) {
+                    throw new Error("The API returned an unexpected response.");
                 }
-            })
-            .catch((err) => {
+
+                setNews(response.data);
+            } catch (err) {
                 console.error("Error fetching affairs:", err);
 
                 if (err.response) {
-                    setError("API error: " + err.response.status);
+                    setError(`API error: ${err.response.status}`);
+                } else if (
+                    err.message === "The API returned an unexpected response."
+                ) {
+                    setError(err.message);
                 } else {
                     setError(
                         "Cannot connect to the backend. Check that it is running."
                     );
                 }
-            })
-            .finally(() => {
+
+                setNews([]);
+            } finally {
                 setLoading(false);
-            });
-    }, []);
+            }
+        },
+        [selectedDay, selectedCategory]
+    );
 
-    if (loading) {
-        return (
-            <div className="page">
-                <h2>📰 Today's Affairs</h2>
-                <p>Loading today's affairs...</p>
-            </div>
-        );
-    }
+    useEffect(() => {
+        fetchNews(selectedDay, selectedCategory);
+    }, [selectedDay, selectedCategory, fetchNews]);
 
-    if (error) {
-        return (
-            <div className="page">
-                <h2>📰 Today's Affairs</h2>
-                <p>{error}</p>
-            </div>
-        );
-    }
+    const handleRefresh = async () => {
+        setIsRefreshing(true);
+        setRefreshFeedback("");
+
+        try {
+            const response = await axios.post(
+                "http://127.0.0.1:8000/refresh-news"
+            );
+            const data = response.data;
+
+            if (data && typeof data.added === "number") {
+                if (data.added > 0) {
+                    setRefreshFeedback(`Fetched ${data.added} new headlines!`);
+                } else {
+                    setRefreshFeedback("News is up to date!");
+                }
+            } else {
+                setRefreshFeedback("News refreshed!");
+            }
+
+            await fetchNews(selectedDay, selectedCategory);
+        } catch (err) {
+            console.error("Error refreshing news:", err);
+            setRefreshFeedback("Failed to fetch fresh news. Please try again.");
+        } finally {
+            setIsRefreshing(false);
+            setTimeout(() => {
+                setRefreshFeedback("");
+            }, 4000);
+        }
+    };
+
+    const pageTitle =
+        selectedDay === "today" ? "Today's Briefing" : "Previous Day";
 
     return (
         <div className="page">
-            <h2>📰 Today's Affairs</h2>
+            <div className="affairs-header-row">
+                <h2>📰 {pageTitle}</h2>
 
-            {news.length === 0 ? (
-                <p>No affairs available right now.</p>
+                {refreshFeedback && (
+                    <span className="refresh-badge" role="status">
+                        {refreshFeedback}
+                    </span>
+                )}
+            </div>
+
+            <div className="affairs-toolbar">
+                <div className="day-selector">
+                    <button
+                        type="button"
+                        className={
+                            selectedDay === "today"
+                                ? "day-btn active"
+                                : "day-btn"
+                        }
+                        onClick={() => setSelectedDay("today")}
+                        disabled={loading && selectedDay === "today"}
+                    >
+                        Today
+                    </button>
+
+                    <button
+                        type="button"
+                        className={
+                            selectedDay === "previous"
+                                ? "day-btn active"
+                                : "day-btn"
+                        }
+                        onClick={() => setSelectedDay("previous")}
+                        disabled={loading && selectedDay === "previous"}
+                    >
+                        Previous Day
+                    </button>
+                </div>
+
+                <button
+                    type="button"
+                    className={`refresh-news-btn ${
+                        isRefreshing ? "refreshing" : ""
+                    }`}
+                    onClick={handleRefresh}
+                    disabled={isRefreshing || loading}
+                    title="Fetch latest headlines from news sources"
+                >
+                    <span className="refresh-icon">🔄</span>
+                    <span>
+                        {isRefreshing ? "Fetching News..." : "Refresh News"}
+                    </span>
+                </button>
+            </div>
+
+            {/* Category Filter Chips */}
+            <div className="category-filter-bar">
+                {CATEGORIES.map((cat) => {
+                    const isActive = selectedCategory === cat.value;
+                    return (
+                        <button
+                            key={cat.value}
+                            type="button"
+                            className={`category-chip ${
+                                isActive ? "active" : ""
+                            }`}
+                            onClick={() => setSelectedCategory(cat.value)}
+                            disabled={loading && isActive}
+                        >
+                            <span className="cat-icon">{cat.icon}</span>
+                            <span>{cat.label}</span>
+                        </button>
+                    );
+                })}
+            </div>
+
+            {loading ? (
+                <p>
+                    Loading{" "}
+                    {selectedDay === "today" ? "today's" : "previous day's"}{" "}
+                    {selectedCategory !== "All" ? `${selectedCategory.toLowerCase()} ` : ""}news...
+                </p>
+            ) : error ? (
+                <p role="alert">{error}</p>
+            ) : news.length === 0 ? (
+                <div className="empty-affairs-box">
+                    <p>
+                        No {selectedCategory !== "All" ? `${selectedCategory} ` : ""}news available for{" "}
+                        {selectedDay === "today" ? "today" : "the previous day"}.
+                    </p>
+                    {selectedCategory !== "All" && (
+                        <button
+                            type="button"
+                            className="category-chip active"
+                            onClick={() => setSelectedCategory("All")}
+                            style={{ margin: "10px 8px 0 0", display: "inline-flex" }}
+                        >
+                            🌐 View All News
+                        </button>
+                    )}
+                    <button
+                        type="button"
+                        className="refresh-news-btn"
+                        onClick={handleRefresh}
+                        disabled={isRefreshing}
+                        style={{ marginTop: "10px" }}
+                    >
+                        <span className="refresh-icon">🔄</span>
+                        <span>
+                            {isRefreshing ? "Fetching..." : "Fetch Latest News Now"}
+                        </span>
+                    </button>
+                </div>
             ) : (
                 <div className="news-grid">
                     {news.map((item) => (
@@ -79,10 +242,16 @@ function Affairs() {
                                 <span className="category">
                                     {item.category}
                                 </span>
+
                                 <button
                                     type="button"
-                                    className={`bookmark-btn ${bookmarkedIds.includes(item.id) ? "active" : ""}`}
-                                    onClick={() => handleBookmarkClick(item.id)}
+                                    className={`bookmark-btn ${bookmarkedIds.includes(item.id)
+                                        ? "active"
+                                        : ""
+                                        }`}
+                                    onClick={() =>
+                                        handleBookmarkClick(item.id)
+                                    }
                                     title={
                                         bookmarkedIds.includes(item.id)
                                             ? "Saved to your Learning Hub"
@@ -96,6 +265,7 @@ function Affairs() {
                             </div>
 
                             <h3>{item.title}</h3>
+
                             <p>{item.summary}</p>
 
                             <div className="remember">

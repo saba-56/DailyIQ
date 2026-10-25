@@ -66,6 +66,23 @@ def get_today_quiz(db: Session = Depends(get_db)):
         .all()
     )
 
+    # Auto-generate with Gemini if none exist yet for today
+    if not questions:
+        try:
+            generate_today_questions(db, limit=5)
+            questions = (
+                db.query(QuizQuestion)
+                .filter(
+                    QuizQuestion.quiz_type == "today",
+                    QuizQuestion.created_at.like(f"{today}%")
+                )
+                .order_by(QuizQuestion.id.asc())
+                .limit(10)
+                .all()
+            )
+        except Exception as exc:
+            print("Auto-generate today quiz error:", exc)
+
     return {
         "date": today,
         "total_questions": len(questions),
@@ -102,10 +119,22 @@ def get_practice_quiz(
         )
 
     questions = (
-        query.order_by(QuizQuestion.id.asc())
+        query.order_by(QuizQuestion.id.desc())
         .limit(limit)
         .all()
     )
+
+    # Auto-generate practice questions if pool is empty
+    if not questions and not topic and not difficulty:
+        try:
+            generate_practice_questions(db, limit=5)
+            questions = (
+                query.order_by(QuizQuestion.id.desc())
+                .limit(limit)
+                .all()
+            )
+        except Exception as exc:
+            print("Auto-generate practice quiz error:", exc)
 
     return {
         "total_questions": len(questions),

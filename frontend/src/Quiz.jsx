@@ -1,4 +1,3 @@
-
 import { useEffect, useState } from "react";
 
 const API = "http://127.0.0.1:8000";
@@ -10,6 +9,7 @@ function Quiz() {
     const [current, setCurrent] = useState(0);
     const [result, setResult] = useState(null);
     const [loading, setLoading] = useState(false);
+    const [generating, setGenerating] = useState(false);
     const [error, setError] = useState("");
 
     async function loadQuiz(selectedMode = mode) {
@@ -38,7 +38,7 @@ function Quiz() {
             if (!data.questions?.length) {
                 setError(
                     selectedMode === "today"
-                        ? "No questions are available for today's quiz yet."
+                        ? "No questions are available for today's quiz yet. Click 'Generate Questions' below."
                         : "No practice questions are available yet."
                 );
             }
@@ -69,9 +69,35 @@ function Quiz() {
         }));
     }
 
+    async function generateNewQuiz() {
+        setGenerating(true);
+        setError("");
+
+        try {
+            const endpoint =
+                mode === "today"
+                    ? "/quiz/generate-today"
+                    : "/quiz/generate-practice?limit=5";
+
+            const response = await fetch(`${API}${endpoint}`, {
+                method: "POST",
+            });
+
+            if (!response.ok) {
+                throw new Error("Failed to generate questions with AI.");
+            }
+
+            await loadQuiz(mode);
+        } catch (err) {
+            setError("Could not generate questions right now. Please try again.");
+        } finally {
+            setGenerating(false);
+        }
+    }
+
     async function submitQuiz() {
         if (Object.keys(answers).length !== questions.length) {
-            setError("Please answer every question before submitting.");
+            setError("Please answer all questions before submitting.");
             return;
         }
 
@@ -85,9 +111,9 @@ function Quiz() {
                     "Content-Type": "application/json",
                 },
                 body: JSON.stringify({
-                    answers: questions.map((question) => ({
-                        question_id: question.id,
-                        selected_option: answers[question.id],
+                    answers: questions.map((q) => ({
+                        question_id: q.id,
+                        selected_option: answers[q.id],
                     })),
                 }),
             });
@@ -95,9 +121,7 @@ function Quiz() {
             const data = await response.json();
 
             if (!response.ok) {
-                throw new Error(
-                    data.detail || "Quiz submission failed."
-                );
+                throw new Error(data.detail || "Quiz submission failed.");
             }
 
             setResult(data);
@@ -109,197 +133,323 @@ function Quiz() {
     }
 
     const question = questions[current];
+    const answeredCount = Object.keys(answers).length;
+    const progressPercent =
+        questions.length > 0 ? ((current + 1) / questions.length) * 100 : 0;
 
     return (
-        <div className="page" style={{ maxWidth: 850, margin: "0 auto", padding: 24 }}>
-            <h2>🎯 DailyIQ Quiz</h2>
-            <p>Test your knowledge with current-affairs questions.</p>
-
-            <div style={{ display: "flex", gap: 10, margin: "20px 0" }}>
-                <button
-                    onClick={() => changeMode("today")}
-                    disabled={loading}
-                    style={{
-                        padding: "10px 16px",
-                        fontWeight: mode === "today" ? "bold" : "normal",
-                    }}
-                >
-                    Today's Quiz
-                </button>
+        <div className="page quiz-page">
+            <header className="quiz-header">
+                <div>
+                    <h2>🎯 DailyIQ Quiz</h2>
+                    <p className="quiz-tagline">
+                        Test your retention and prepare for exams with questions
+                        crafted from today's news.
+                    </p>
+                </div>
 
                 <button
-                    onClick={() => changeMode("practice")}
-                    disabled={loading}
-                    style={{
-                        padding: "10px 16px",
-                        fontWeight: mode === "practice" ? "bold" : "normal",
-                    }}
+                    type="button"
+                    className="generate-quiz-btn"
+                    onClick={generateNewQuiz}
+                    disabled={loading || generating}
+                    title="Generate new questions with Gemini AI"
                 >
-                    Practice Quiz
+                    <span className="quiz-btn-icon">⚡</span>
+                    <span>
+                        {generating ? "Crafting MCQs..." : "Generate Fresh Quiz"}
+                    </span>
                 </button>
+            </header>
+
+            {/* Mode Selector */}
+            <div className="quiz-mode-toolbar">
+                <div className="day-selector">
+                    <button
+                        type="button"
+                        className={mode === "today" ? "day-btn active" : "day-btn"}
+                        onClick={() => changeMode("today")}
+                        disabled={loading || generating}
+                    >
+                        📅 Today's Quiz
+                    </button>
+
+                    <button
+                        type="button"
+                        className={mode === "practice" ? "day-btn active" : "day-btn"}
+                        onClick={() => changeMode("practice")}
+                        disabled={loading || generating}
+                    >
+                        📚 Practice Quiz
+                    </button>
+                </div>
             </div>
 
-            {loading && <p>Loading...</p>}
-            {error && (
-                <p role="alert" style={{ color: "crimson" }}>
-                    {error}
-                </p>
+            {/* Loading / Generating State */}
+            {(loading || generating) && (
+                <div className="quiz-loading-card">
+                    <div className="quiz-spinner"></div>
+                    <p>
+                        {generating
+                            ? "🧠 Gemini AI is analyzing the news and drafting MCQs..."
+                            : "Loading quiz questions..."}
+                    </p>
+                </div>
             )}
 
-            {!loading && !error && questions.length > 0 && (
-                <>
-                    {!result && (
-                        <>
-                            <p>
+            {/* Error Message */}
+            {error && !loading && !generating && (
+                <div className="quiz-error-card" role="alert">
+                    <p>{error}</p>
+                    <button
+                        type="button"
+                        className="page button"
+                        onClick={generateNewQuiz}
+                        style={{ marginTop: 12 }}
+                    >
+                        ⚡ Generate Questions Now
+                    </button>
+                </div>
+            )}
+
+            {/* Active Quiz Question Runner */}
+            {!loading && !generating && !error && questions.length > 0 && !result && question && (
+                <div className="quiz-card">
+                    {/* Top Meta Row */}
+                    <div className="quiz-meta-row">
+                        <div className="quiz-meta-left">
+                            <span className="quiz-progress-label">
                                 Question {current + 1} of {questions.length}
-                            </p>
+                            </span>
+                            {question.topic && (
+                                <span className="category quiz-topic-badge">
+                                    {question.topic}
+                                </span>
+                            )}
+                        </div>
 
-                            <div style={{
-                                height: 6,
-                                background: "#e5e7eb",
-                                borderRadius: 8,
-                                marginBottom: 20,
-                            }}>
-                                <div style={{
-                                    height: "100%",
-                                    width: `${((current + 1) / questions.length) * 100}%`,
-                                    background: "#2563eb",
-                                    borderRadius: 8,
-                                }} />
-                            </div>
+                        <span className="quiz-difficulty-tag">
+                            {question.difficulty || "medium"}
+                        </span>
+                    </div>
 
-                            <div style={{
-                                border: "1px solid #ddd",
-                                borderRadius: 12,
-                                padding: 22,
-                            }}>
-                                <h3>{question.question}</h3>
+                    {/* Progress Bar */}
+                    <div className="quiz-progress-bar-track">
+                        <div
+                            className="quiz-progress-bar-fill"
+                            style={{ width: `${progressPercent}%` }}
+                        />
+                    </div>
 
-                                {["A", "B", "C", "D"].map((option) => (
-                                    <button
-                                        key={option}
-                                        onClick={() =>
-                                            chooseAnswer(question.id, option)
-                                        }
-                                        style={{
-                                            display: "block",
-                                            width: "100%",
-                                            textAlign: "left",
-                                            padding: 14,
-                                            margin: "10px 0",
-                                            borderRadius: 8,
-                                            border: answers[question.id] === option
-                                                ? "2px solid #2563eb"
-                                                : "1px solid #ccc",
-                                            background: answers[question.id] === option
-                                                ? "#eff6ff"
-                                                : "white",
-                                            color: "#111827",
-                                            cursor: "pointer",
-                                        }}
-                                    >
-                                        <strong>{option}.</strong>{" "}
-                                        {question.options[option]}
-                                    </button>
-                                ))}
-                            </div>
+                    {/* Question Headline */}
+                    <h3 className="quiz-question-title">{question.question}</h3>
 
-                            <p>
-                                Answered: {Object.keys(answers).length} /{" "}
-                                {questions.length}
-                            </p>
+                    {/* Options Grid */}
+                    <div className="quiz-options-list">
+                        {["A", "B", "C", "D"].map((key) => {
+                            const optionText = question.options[key];
+                            if (!optionText) return null;
+                            const isSelected = answers[question.id] === key;
 
-                            <div style={{
-                                display: "flex",
-                                justifyContent: "space-between",
-                                gap: 10,
-                                marginTop: 20,
-                            }}>
+                            return (
                                 <button
-                                    onClick={() => setCurrent((n) => n - 1)}
-                                    disabled={current === 0}
+                                    key={key}
+                                    type="button"
+                                    className={`quiz-option-btn ${
+                                        isSelected ? "selected" : ""
+                                    }`}
+                                    onClick={() => chooseAnswer(question.id, key)}
                                 >
-                                    Previous
+                                    <span className="quiz-option-key">
+                                        {key}
+                                    </span>
+                                    <span className="quiz-option-text">
+                                        {optionText}
+                                    </span>
                                 </button>
+                            );
+                        })}
+                    </div>
 
-                                {current < questions.length - 1 ? (
-                                    <button
-                                        onClick={() => setCurrent((n) => n + 1)}
-                                    >
-                                        Next
-                                    </button>
-                                ) : (
-                                    <button
-                                        onClick={submitQuiz}
-                                        disabled={loading}
-                                    >
-                                        Submit Quiz
-                                    </button>
-                                )}
-                            </div>
-                        </>
-                    )}
+                    {/* Footer Row */}
+                    <div className="quiz-footer-row">
+                        <div className="quiz-footer-status">
+                            Answered:{" "}
+                            <strong>
+                                {answeredCount} / {questions.length}
+                            </strong>
+                        </div>
 
-                    {result && (
-                        <div style={{
-                            border: "1px solid #ddd",
-                            borderRadius: 12,
-                            padding: 22,
-                        }}>
-                            <h2>Quiz Results</h2>
+                        <div className="quiz-nav-btns">
+                            <button
+                                type="button"
+                                className="quiz-nav-btn secondary"
+                                onClick={() => setCurrent((n) => n - 1)}
+                                disabled={current === 0}
+                            >
+                                ◄ Previous
+                            </button>
+
+                            {current < questions.length - 1 ? (
+                                <button
+                                    type="button"
+                                    className="quiz-nav-btn primary"
+                                    onClick={() => setCurrent((n) => n + 1)}
+                                >
+                                    Next ►
+                                </button>
+                            ) : (
+                                <button
+                                    type="button"
+                                    className="quiz-nav-btn submit"
+                                    onClick={submitQuiz}
+                                    disabled={answeredCount < questions.length}
+                                    title={
+                                        answeredCount < questions.length
+                                            ? "Answer all questions to submit"
+                                            : "Submit your quiz"
+                                    }
+                                >
+                                    Submit Quiz ✓
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Quiz Results Screen */}
+            {result && (
+                <div className="quiz-results-container">
+                    <div className="quiz-score-hero">
+                        <div className="score-circle">
+                            <span className="score-fraction">
+                                {result.correct_answers}/{result.total_questions}
+                            </span>
+                            <span className="score-pct">
+                                {result.score_percentage}%
+                            </span>
+                        </div>
+
+                        <div className="score-details">
                             <h3>
-                                Score: {result.correct_answers} /{" "}
-                                {result.total_questions}
+                                {result.score_percentage >= 80
+                                    ? "🎉 Excellent Work!"
+                                    : result.score_percentage >= 50
+                                    ? "👏 Good Effort!"
+                                    : "Keep Learning & Retrying!"}
                             </h3>
                             <p>
-                                Percentage: {result.score_percentage}%
+                                You answered {result.correct_answers} correctly out of{" "}
+                                {result.total_questions} questions. Review the key
+                                explanations below to master the facts.
                             </p>
-                            <p>Correct: {result.correct_answers}</p>
-                            <p>Incorrect: {result.incorrect_answers}</p>
 
-                            <hr />
+                            <div className="score-actions">
+                                <button
+                                    type="button"
+                                    className="quiz-nav-btn primary"
+                                    onClick={() => loadQuiz(mode)}
+                                >
+                                    🔄 Try Again
+                                </button>
 
-                            {questions.map((q, index) => {
-                                const answerResult = result.results.find(
-                                    (item) => item.question_id === q.id
-                                );
+                                <button
+                                    type="button"
+                                    className="generate-quiz-btn"
+                                    onClick={generateNewQuiz}
+                                    disabled={generating}
+                                >
+                                    ⚡ Generate New Questions
+                                </button>
+                            </div>
+                        </div>
+                    </div>
 
-                                return (
-                                    <div key={q.id} style={{ marginBottom: 22 }}>
-                                        <h4>
-                                            {index + 1}. {q.question}
-                                        </h4>
-                                        <p>
-                                            Your answer:{" "}
-                                            {answerResult?.selected_option || "—"}
-                                        </p>
-                                        <p>
-                                            Correct answer:{" "}
-                                            {answerResult?.correct_option}
-                                        </p>
-                                        <p>
-                                            {answerResult?.explanation}
-                                        </p>
+                    <h3 className="quiz-review-heading">📝 Detailed Question Review</h3>
 
-                                        {q.source_url && (
+                    <div className="quiz-review-list">
+                        {questions.map((q, idx) => {
+                            const resItem = result.results?.find(
+                                (r) => r.question_id === q.id
+                            );
+                            const isCorrect = resItem?.is_correct;
+
+                            return (
+                                <div
+                                    key={q.id}
+                                    className={`quiz-review-card ${
+                                        isCorrect ? "correct-card" : "wrong-card"
+                                    }`}
+                                >
+                                    <div className="review-card-top">
+                                        <span className="review-num">
+                                            Q{idx + 1}. {q.question}
+                                        </span>
+                                        <span
+                                            className={`review-status-pill ${
+                                                isCorrect
+                                                    ? "pill-correct"
+                                                    : "pill-wrong"
+                                            }`}
+                                        >
+                                            {isCorrect ? "✓ Correct" : "✗ Incorrect"}
+                                        </span>
+                                    </div>
+
+                                    <div className="review-choices-comparison">
+                                        <div className="choice-row">
+                                            <span className="choice-label">
+                                                Your Answer:
+                                            </span>
+                                            <span
+                                                className={`choice-val ${
+                                                    isCorrect ? "val-correct" : "val-wrong"
+                                                }`}
+                                            >
+                                                Option {resItem?.selected_option}:{" "}
+                                                {q.options[resItem?.selected_option] ||
+                                                    "Not answered"}
+                                            </span>
+                                        </div>
+
+                                        {!isCorrect && (
+                                            <div className="choice-row">
+                                                <span className="choice-label">
+                                                    Correct Answer:
+                                                </span>
+                                                <span className="choice-val val-correct">
+                                                    Option {resItem?.correct_option}:{" "}
+                                                    {q.options[resItem?.correct_option]}
+                                                </span>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {resItem?.explanation && (
+                                        <div className="review-explanation">
+                                            <strong>⭐ Explanation:</strong>
+                                            <p>{resItem.explanation}</p>
+                                        </div>
+                                    )}
+
+                                    {q.source_url && (
+                                        <div className="review-source">
+                                            Source:{" "}
                                             <a
                                                 href={q.source_url}
                                                 target="_blank"
                                                 rel="noreferrer"
                                             >
-                                                Read source article
+                                                {q.source_title || "Read Original Article"}
                                             </a>
-                                        )}
-                                    </div>
-                                );
-                            })}
-
-                            <button onClick={() => loadQuiz(mode)}>
-                                Try Again
-                            </button>
-                        </div>
-                    )}
-                </>
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
             )}
         </div>
     );

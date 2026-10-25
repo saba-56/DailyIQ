@@ -14,6 +14,7 @@ from routes.student_profiles import router as student_profiles_router
 from models.quiz_question import QuizQuestion
 Base.metadata.create_all(bind=engine)
 from routes.quiz import router as quiz_router
+from routes.ask_ai import router as ask_ai_router
 def refresh_news():
     db = SessionLocal()
 
@@ -47,6 +48,7 @@ app.include_router(opportunities_router)
 app.include_router(auth_router)
 app.include_router(student_profiles_router)
 app.include_router(quiz_router)
+app.include_router(ask_ai_router)
 @app.get("/")
 def home():
     return {"message": "DailyIQ Backend is running!"}
