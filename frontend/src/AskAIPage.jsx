@@ -1,5 +1,6 @@
 import axios from "axios";
 import { useEffect, useRef, useState } from "react";
+import { API_BASE } from "./config";
 
 const SUGGESTIONS = [
     "📰 What are today's top headlines in DailyIQ?",
@@ -113,7 +114,7 @@ function AskAIPage() {
         setLoading(true);
 
         try {
-            const response = await axios.post("http://127.0.0.1:8000/ask-ai", {
+            const response = await axios.post(`${API_BASE}/ask-ai`, {
                 message: query,
                 history: historyPayload,
             });

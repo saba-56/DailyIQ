@@ -23,14 +23,16 @@ function Home() {
                     </Link>
                 </div>
 
-                <div className="feature-card">
-                    <h2>💼 Opportunities</h2>
+                <div className="feature-card feature-card-upcoming">
+                    <div className="card-badge-row">
+                        <span className="badge-upcoming">🚀 Upcoming Feature</span>
+                    </div>
+                    <h2>💼 Opportunities Hub</h2>
                     <p>
-                        Discover jobs, internships and scholarships in
-                        one place.
+                        Personalized internships, verified scholarships, and student opportunities matched directly to your branch and skills.
                     </p>
                     <Link to="/opportunities">
-                        <button>Explore Opportunities</button>
+                        <button className="preview-upcoming-btn">Preview Upcoming Features →</button>
                     </Link>
                 </div>
 

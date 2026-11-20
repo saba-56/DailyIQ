@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
-
-const API = "http://127.0.0.1:8000";
+import { API_BASE as API } from "./config";
 
 function Quiz() {
     const [mode, setMode] = useState("today");

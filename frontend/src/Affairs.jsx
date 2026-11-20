@@ -3,6 +3,7 @@ import axios from "axios";
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "./context/AuthContext";
+import { API_BASE } from "./config";
 
 const CATEGORIES = [
     { label: "All News", value: "All", icon: "🌐" },
@@ -49,7 +50,8 @@ function Affairs() {
                         : "";
 
                 const response = await axios.get(
-                    `http://127.0.0.1:8000/latest-affairs?day=${dayToFetch}${categoryParam}`
+                    `${API_BASE}/latest-affairs?day=${dayToFetch}${categoryParam}`,
+                    { timeout: 8000 }
                 );
 
                 if (!Array.isArray(response.data)) {
@@ -60,7 +62,9 @@ function Affairs() {
             } catch (err) {
                 console.error("Error fetching affairs:", err);
 
-                if (err.response) {
+                if (err.code === "ECONNABORTED") {
+                    setError("Request timed out. The backend server took too long to respond.");
+                } else if (err.response) {
                     setError(`API error: ${err.response.status}`);
                 } else if (
                     err.message === "The API returned an unexpected response."
@@ -68,7 +72,7 @@ function Affairs() {
                     setError(err.message);
                 } else {
                     setError(
-                        "Cannot connect to the backend. Check that it is running."
+                        "Cannot connect to backend at http://127.0.0.1:8000. Please verify that your backend server is running."
                     );
                 }
 
@@ -90,11 +94,15 @@ function Affairs() {
 
         try {
             const response = await axios.post(
-                "http://127.0.0.1:8000/refresh-news"
+                `${API_BASE}/refresh-news`,
+                {},
+                { timeout: 15000 }
             );
             const data = response.data;
 
-            if (data && typeof data.added === "number") {
+            if (data?.gnews_error) {
+                setRefreshFeedback("News source limit reached or unavailable.");
+            } else if (data && typeof data.added === "number") {
                 if (data.added > 0) {
                     setRefreshFeedback(`Fetched ${data.added} new headlines!`);
                 } else {
@@ -239,9 +247,16 @@ function Affairs() {
                     {news.map((item) => (
                         <article className="news-card" key={item.id}>
                             <div className="card-top-row">
-                                <span className="category">
-                                    {item.category}
-                                </span>
+                                <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                                    <span className="category">
+                                        {item.category}
+                                    </span>
+                                    {item.published_at && (
+                                        <span className="news-date-badge">
+                                            📅 {item.published_at.slice(0, 10)}
+                                        </span>
+                                    )}
+                                </div>
 
                                 <button
                                     type="button"

@@ -22,7 +22,79 @@ GNEWS_API_KEY = os.getenv("GNEWS_API_KEY")
 
 
 # --------------------------------------------------
-# 2. DETECT NEWS CATEGORY
+# 2. NOISE & IMPORTANCE FILTER
+# --------------------------------------------------
+
+NOISE_KEYWORDS = [
+    # Entertainment / Celebrity Gossip / Film Marketing
+    "trailer out", "trailer release", "teaser out", "teaser drops", "box office", "box-office",
+    "movie review", "film review", "ott release", "spotted at", "airport look", "red carpet",
+    "paparazzi", "dating rumors", "dating rumour", "wedding photos", "wedding pictures",
+    "bollywood gossip", "hollywood gossip", "bigg boss", "reality show", "outfit look",
+    "samay raina", "influencer", "reels star", "viral video", "tiktok", "instagram video",
+    
+    # Horoscopes / Astrology / Superstition
+    "horoscope", "zodiac", "astrology", "rashifal", "kundali", "tarot reading",
+    
+    # Sensational viral drama & clickbait
+    "internet stunned", "netizens react", "jaw-dropping", "breaks the internet",
+    "fans go wild", "twitter reacts", "x reacts", "fans divided",
+    
+    # Petty / local non-policy crimes
+    "chain snatching", "drunk driving", "brawl in bar", "stole phone", "stole bike", "posed as teen"
+]
+
+HIGH_VALUE_INDICATORS = [
+    # Law, Judiciary & Constitutional Governance
+    "supreme court", "high court", "constitution", "verdict", "bench", "cji",
+    "parliament", "lok sabha", "rajya sabha", "cabinet", "ordinance", "legislation",
+    "election commission", "cag", "union ministry", "central government",
+    
+    # Economy, Finance, Trade & Monetary Policy
+    "rbi", "reserve bank", "repo rate", "inflation", "cpi", "wpi", "gdp", "growth rate",
+    "fiscal deficit", "sebi", "sensex", "nifty", "trade deficit", "rupee", "tax", "gst",
+    
+    # Science, Space, Defense & Frontier Tech
+    "isro", "nasa", "drdo", "satellite", "gaganyaan", "chandrayaan", "space mission",
+    "artificial intelligence", "semiconductor", "quantum computing", "clinical trial",
+    "vaccine", "who", "public health", "mortality", "tb decline",
+    
+    # Geopolitics & Foreign Affairs
+    "summit", "bilateral", "treaty", "united nations", "un security council",
+    "brics", "g20", "quad", "asean", "diplomacy", "foreign policy", "ceasefire",
+    "sanctions", "peace talks", "international relations",
+    
+    # Environment & Climate Regulations
+    "air quality", "aqi", "grap", "pollution", "renewable energy", "climate change",
+    "green hydrogen", "cop29", "cop30", "forest conservation",
+    
+    # Major Sports Milestones (Championships, Medals, World Cups)
+    "world cup", "olympics", "asian games", "commonwealth", "championship",
+    "border-gavaskar", "test series", "gold medal", "world title", "grand slam"
+]
+
+
+def is_article_noise(title: str, description: str = "") -> bool:
+    """
+    Returns True if an article matches clear noise patterns (celebrity gossip,
+    movie trailers, horoscopes, influencer drama), UNLESS it contains high-value
+    constitutional, economic, or scientific indicators.
+    """
+    text = (title + " " + (description or "")).lower()
+
+    # Always keep high-value national/scientific/economic news
+    if any(indicator in text for indicator in HIGH_VALUE_INDICATORS):
+        return False
+
+    # Filter out clear noise
+    if any(noise in text for noise in NOISE_KEYWORDS):
+        return True
+
+    return False
+
+
+# --------------------------------------------------
+# 3. DETECT NEWS CATEGORY
 # --------------------------------------------------
 
 def get_category(title, description):
@@ -32,19 +104,23 @@ def get_category(title, description):
         "Technology": [
             "technology", "artificial intelligence", " ai ",
             "software", "computer", "google", "microsoft",
-            "apple", "cyber", "startup", "robot", "semiconductor"
+            "apple", "cyber", "startup", "robot", "semiconductor",
+            "microchip", "quantum", "telecom", "5g", "6g"
         ],
 
         "Economy": [
             "economy", "economic", "inflation", "market",
             "business", "bank", "rupee", "finance", "stock",
-            "investment", "gdp", "tax"
+            "investment", "gdp", "tax", "rbi", "repo rate",
+            "sensex", "nifty", "trade", "export", "import", "sebi"
         ],
 
         "Sports": [
             "cricket", "football", "tennis", "sports",
             "olympics", "match", "player", "tournament",
-            "world cup", "championship"
+            "world cup", "championship", "batting", "bowling",
+            "wicket", "innings", "t20", "odi", "bcci", "icc",
+            "border-gavaskar", "badminton", "hockey"
         ],
 
         "Science": [
@@ -52,25 +128,29 @@ def get_category(title, description):
             "research", "scientist", "astronomy",
             "satellite", "physics", "biology", "sun", "solar",
             "planet", "moon", "galaxy", "universe", "earthquake",
-            "volcano", "discovery"
+            "volcano", "discovery", "gaganyaan", "clinical trial",
+            "vaccine", "health", "mortality"
         ],
 
         "Education": [
             "education", "school", "university",
             "college", "student", "exam", "academic",
-            "scholarship", "teacher"
+            "scholarship", "teacher", "ugc", "aicte", "nep"
         ],
 
         "Environment": [
             "climate", "environment", "pollution",
             "weather", "forest", "wildlife",
-            "global warming", "carbon emissions"
+            "global warming", "carbon emissions", "aqi",
+            "air quality", "caqm", "grap", "renewable"
         ],
 
         "Politics": [
             "government", "minister", "parliament",
             "election", "political", "president",
-            "prime minister", "lok sabha", "rajya sabha"
+            "prime minister", "lok sabha", "rajya sabha",
+            "supreme court", "high court", "judiciary",
+            "verdict", "cabinet", "ordinance", "bill"
         ]
     }
 
@@ -82,49 +162,113 @@ def get_category(title, description):
 
 
 # --------------------------------------------------
-# 3. FETCH NEWS FROM GNEWS
+# 4. FETCH NEWS (GNEWS + LIVE RSS)
 # --------------------------------------------------
 
-def fetch_news():
-    if not GNEWS_API_KEY:
-        return {
-            "gnews_error": "GNEWS_API_KEY is missing from the .env file."
-        }
+def fetch_rss_news():
+    """
+    Fetches real-time headlines from Google News India RSS feed.
+    No API keys, no daily rate limits, and updates continuously 24/7.
+    """
+    import urllib.request
+    import xml.etree.ElementTree as ET
+    from email.utils import parsedate_to_datetime
 
-    url = "https://gnews.io/api/v4/top-headlines"
-
-    params = {
-        "apikey": GNEWS_API_KEY,
-        "lang": "en",
-        "country": "in",
-        "max": 10
-    }
+    url = "https://news.google.com/rss?hl=en-IN&gl=IN&ceid=IN:en"
+    articles = []
 
     try:
-        response = requests.get(
+        req = urllib.request.Request(
             url,
-            params=params,
-            timeout=10
+            headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
         )
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            xml_data = resp.read()
 
-        if response.status_code != 200:
-            return {
-                "status_code": response.status_code,
-                "gnews_error": response.text
-            }
+        root = ET.fromstring(xml_data)
+        channel = root.find("channel")
+        if channel is None:
+            return []
 
-        data = response.json()
-        return data.get("articles", [])
+        for item in channel.findall("item"):
+            title_elem = item.find("title")
+            link_elem = item.find("link")
+            pub_date_elem = item.find("pubDate")
+            desc_elem = item.find("description")
+            source_elem = item.find("source")
 
-    except requests.RequestException as error:
-        return {
-            "gnews_error": str(error)
+            title = (title_elem.text or "").strip() if title_elem is not None else ""
+            link = (link_elem.text or "").strip() if link_elem is not None else ""
+            desc = (desc_elem.text or "").strip() if desc_elem is not None else ""
+            source_name = source_elem.text if source_elem is not None else "Google News"
+
+            # Strip HTML tags from description if present
+            clean_desc = re.sub(r"<[^>]+>", "", desc).strip() if desc else title
+
+            published_at = None
+            if pub_date_elem is not None and pub_date_elem.text:
+                try:
+                    dt = parsedate_to_datetime(pub_date_elem.text)
+                    published_at = dt.astimezone(ZoneInfo("Asia/Kolkata")).isoformat()
+                except Exception:
+                    published_at = datetime.now(ZoneInfo("Asia/Kolkata")).isoformat()
+            else:
+                published_at = datetime.now(ZoneInfo("Asia/Kolkata")).isoformat()
+
+            if title:
+                articles.append({
+                    "title": title,
+                    "description": clean_desc,
+                    "url": link,
+                    "publishedAt": published_at,
+                    "source": {"name": source_name}
+                })
+
+    except Exception as exc:
+        print("Live RSS fetch notice:", exc)
+
+    return articles
+
+
+def fetch_news():
+    """
+    Combines GNews top headlines with real-time RSS updates so news refreshes
+    seamlessly throughout the day (morning, afternoon, and evening).
+    """
+    combined_articles = []
+    seen_urls = set()
+
+    # 1. Fetch from GNews if API key is provided
+    if GNEWS_API_KEY:
+        url = "https://gnews.io/api/v4/top-headlines"
+        params = {
+            "apikey": GNEWS_API_KEY,
+            "lang": "en",
+            "country": "in",
+            "max": 20
         }
 
-    except ValueError:
-        return {
-            "gnews_error": "GNews returned an invalid JSON response."
-        }
+        try:
+            response = requests.get(url, params=params, timeout=10)
+            if response.status_code == 200:
+                data = response.json()
+                for a in data.get("articles", []):
+                    u = a.get("url")
+                    if u and u not in seen_urls:
+                        seen_urls.add(u)
+                        combined_articles.append(a)
+        except Exception as exc:
+            print("GNews request notice:", exc)
+
+    # 2. Fetch live RSS updates to capture breaking news throughout the day
+    rss_articles = fetch_rss_news()
+    for a in rss_articles:
+        u = a.get("url")
+        if u and u not in seen_urls:
+            seen_urls.add(u)
+            combined_articles.append(a)
+
+    return combined_articles
 
 
 # --------------------------------------------------
@@ -238,6 +382,33 @@ def is_same_story(title_a: str, title_b: str) -> bool:
     return len(inter) >= 4 and jaccard >= 0.50
 
 
+def prune_noise_affairs(db):
+    """
+    Scans the database and removes low-value noise articles (celebrity gossip,
+    movie trailers, horoscopes, influencer drama) while safely cleaning references.
+    """
+    from models.bookmark import Bookmark
+    from models.quiz_question import QuizQuestion
+
+    rows = db.query(Affair).all()
+    removed = 0
+
+    for affair in rows:
+        if is_article_noise(affair.title, affair.summary):
+            try:
+                db.query(Bookmark).filter(Bookmark.affair_id == affair.id).delete()
+                db.query(QuizQuestion).filter(QuizQuestion.affair_id == affair.id).delete()
+                db.delete(affair)
+                removed += 1
+            except Exception as exc:
+                print(f"Error removing noise affair {affair.id}: {exc}")
+
+    if removed > 0:
+        db.commit()
+
+    return removed
+
+
 def prune_duplicate_affairs(db):
     """
     Scans the database and removes duplicate coverage of the same news story,
@@ -304,17 +475,18 @@ def import_news_to_database(db):
     added = 0
     updated = 0
     skipped_duplicates = 0
+    skipped_noise = 0
 
     try:
         # Load recent articles to check against for same-story duplicates
         recent_affairs = (
             db.query(Affair)
             .order_by(Affair.id.desc())
-            .limit(60)
+            .limit(150)
             .all()
         )
 
-        for article in articles[:10]:
+        for article in articles:
             source = article.get("source") or {}
 
             source_url = article.get("url", "")
@@ -322,6 +494,12 @@ def import_news_to_database(db):
             description = (article.get("description") or "").strip()
 
             if not title:
+                continue
+
+            # Skip low-value noise (celebrity gossip, movie trailers, horoscopes, influencer drama)
+            # while strictly preserving high-value national, economic, scientific, educational news
+            if is_article_noise(title, description):
+                skipped_noise += 1
                 continue
 
             original_published_at = article.get("publishedAt", "")
@@ -383,8 +561,9 @@ def import_news_to_database(db):
 
         db.commit()
 
-        # Run prune to clean up any pre-existing duplicates in DB
-        pruned = prune_duplicate_affairs(db)
+        # Run prune to clean up any pre-existing duplicates and noise in DB
+        pruned_dupes = prune_duplicate_affairs(db)
+        pruned_noise = prune_noise_affairs(db)
 
     except Exception:
         db.rollback()
@@ -392,10 +571,12 @@ def import_news_to_database(db):
 
     return {
         "message": "News import completed!",
-        "total_fetched": len(articles[:10]),
+        "total_fetched": len(articles) if isinstance(articles, list) else 0,
         "added": added,
         "updated": updated,
         "skipped_duplicates": skipped_duplicates,
-        "pruned_duplicates": pruned
+        "skipped_noise": skipped_noise,
+        "pruned_duplicates": pruned_dupes,
+        "pruned_noise": pruned_noise
     }
 

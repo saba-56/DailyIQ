@@ -1,7 +1,6 @@
 import { createContext, useContext, useState, useEffect } from "react";
 import axios from "axios";
-
-const API_BASE = "http://127.0.0.1:8000";
+import { API_BASE } from "../config";
 
 const AuthContext = createContext();
 
@@ -66,11 +65,11 @@ export function AuthProvider({ children }) {
         name,
         email,
         password,
-        degree,
-        branch,
-        studyYear,
-        skills,
-        preferredLocation
+        degree = "Student",
+        branch = "General",
+        studyYear = "Current",
+        skills = "General Knowledge",
+        preferredLocation = "India"
     ) => {
         const res = await axios.post(`${API_BASE}/auth/register`, {
             name,

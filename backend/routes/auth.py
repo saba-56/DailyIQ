@@ -28,11 +28,11 @@ class RegisterRequest(BaseModel):
     name: str
     email: str
     password: str
-    degree: str
-    branch: str
-    study_year: str
-    skills: str
-    preferred_location: str
+    degree: Optional[str] = "Student"
+    branch: Optional[str] = "General"
+    study_year: Optional[str] = "Current"
+    skills: Optional[str] = "General Knowledge"
+    preferred_location: Optional[str] = "India"
 
 
 class LoginRequest(BaseModel):
@@ -116,20 +116,11 @@ def register(
             detail="Password must be at least 6 characters long.",
         )
 
-    # Validate student details
-    required_fields = [
-        req.degree,
-        req.branch,
-        req.study_year,
-        req.skills,
-        req.preferred_location,
-    ]
-
-    if not all(value.strip() for value in required_fields):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Please complete all education, skills, and location fields.",
-        )
+    degree = (req.degree or "Student").strip() or "Student"
+    branch = (req.branch or "General").strip() or "General"
+    study_year = (req.study_year or "Current").strip() or "Current"
+    skills = (req.skills or "General Knowledge").strip() or "General Knowledge"
+    preferred_location = (req.preferred_location or "India").strip() or "India"
 
     # Check for an existing account
     existing = (
@@ -165,11 +156,11 @@ def register(
         student_profile = StudentProfile(
             user_id=new_user.id,
             profile_name=new_user.name,
-            degree=req.degree.strip(),
-            branch=req.branch.strip(),
-            study_year=req.study_year.strip(),
-            preferred_skills=req.skills.strip(),
-            preferred_location=req.preferred_location.strip(),
+            degree=degree,
+            branch=branch,
+            study_year=study_year,
+            preferred_skills=skills,
+            preferred_location=preferred_location,
         )
 
         db.add(student_profile)

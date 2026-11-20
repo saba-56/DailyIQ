@@ -22,7 +22,10 @@ function Navigation() {
       <div className="nav-links">
         <Link to="/">Home</Link>
         <Link to="/affairs">Affairs</Link>
-        <Link to="/opportunities">Opportunities</Link>
+        <Link to="/opportunities" className="nav-opportunities-link">
+          Opportunities
+          <span className="nav-badge-upcoming">Soon</span>
+        </Link>
         <Link to="/quiz">Quiz</Link>
         <Link to="/ask-ai">Ask AI</Link>
 

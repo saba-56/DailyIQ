@@ -24,7 +24,7 @@ def get_latest_affairs(
 
     target_day = today if day == "today" else today - timedelta(days=1)
 
-    def parse_and_filter(records):
+    def parse_and_filter(records, target_date):
         filtered = []
         for affair in records:
             published = affair.published_at
@@ -49,7 +49,7 @@ def get_latest_affairs(
                 except (ValueError, TypeError):
                     continue
 
-            if published_date != target_day:
+            if published_date != target_date:
                 continue
 
             if category and category.strip().lower() != "all":
@@ -80,22 +80,7 @@ def get_latest_affairs(
         .all()
     )
 
-    result = parse_and_filter(affairs)
-
-    # If asking for today and no articles exist yet, auto-fetch once
-    if not result and day == "today":
-        try:
-            import_news_to_database(db)
-            affairs = (
-                db.query(Affair)
-                .filter(Affair.published_at.isnot(None))
-                .order_by(Affair.published_at.desc(), Affair.id.desc())
-                .all()
-            )
-            result = parse_and_filter(affairs)
-        except Exception as e:
-            print("Auto-refresh news failed:", e)
-
+    result = parse_and_filter(affairs, target_day)
     return result
 
 @router.get("/search-affairs")
